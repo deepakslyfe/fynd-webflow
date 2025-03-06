@@ -1,253 +1,585 @@
-$(document).ready(function() {
-    // Debug logger for the console
-    function debugLog(message, data = null) {
-      console.log(`[DEBUG] ${message}`, data || '');
-    }
+/**
+ * Combined Form Validation Script for Webflow
+ * Includes:
+ * - International phone validation
+ * - Required field validation
+ * - Form submission handling
+ * - Page URL capture
+ * - Debug logging
+ */
+
+// Main function that contains all functionality
+(function() {
+  // Debug mode - set to false for production
+  const DEBUG = true;
   
-    debugLog('Starting to debug international phone selection');
-    
-    // Check if intlTelInput library is loaded
-    if (typeof intlTelInput === 'undefined') {
-      console.error('ERROR: intlTelInput library is not loaded. Please check if the library is included properly.');
-      return;
+  // Debug logger function
+  function debugLog(message, data) {
+    if (!DEBUG) return;
+    console.log(`[DEBUG] ${message}`, data || '');
+  }
+  
+  // Log any errors that occur
+  function debugError(message, error) {
+    if (!DEBUG) return;
+    console.error(`[ERROR] ${message}`, error || '');
+  }
+  
+  // Wait for document ready
+  function onDocumentReady(callback) {
+    if (document.readyState !== 'loading') {
+      callback();
     } else {
-      debugLog('intlTelInput library is loaded correctly');
+      document.addEventListener('DOMContentLoaded', callback);
+    }
+  }
+  
+  // Initialize all functionality
+  onDocumentReady(function() {
+    debugLog('Document ready, initializing form validation');
+    
+    // Initialize all components
+    initPhoneValidation();
+    initRequiredFieldValidation();
+    initFormSubmission();
+    initPageUrlCapture();
+    initFormValidator();
+    
+    // Add inline debug panel if in debug mode
+    if (DEBUG) {
+      addDebugPanel();
     }
     
-    // Check if all required elements exist
-    var elements = {
-      form: document.querySelector("#cs_gated_form"),
-      phoneInput: document.querySelector("#Phone-cs"),
-      dialCode: document.querySelector("#cs-dialCode"),
-      errorMsg: document.querySelector("#cs-error-msg"),
-      validMsg: document.querySelector("#cs-valid-msg"),
-      fullPhone: document.querySelector("#cs-fullPhone")
-    };
+    debugLog('All components initialized');
+  });
+  
+  // 1. Phone Validation
+  function initPhoneValidation() {
+    debugLog('Initializing phone validation');
     
-    // Log which elements are found and which are missing
-    var missingElements = [];
-    Object.keys(elements).forEach(key => {
-      if (!elements[key]) {
-        missingElements.push(key);
-        console.error(`ERROR: Element ${key} (${getElementSelector(key)}) not found in the DOM`);
-      } else {
-        debugLog(`Element ${key} found`, elements[key]);
-      }
-    });
-    
-    if (missingElements.length > 0) {
-      console.error(`ERROR: Missing elements: ${missingElements.join(', ')}. Please check your HTML.`);
-    }
-    
-    // Helper function to get the selector for an element key
-    function getElementSelector(key) {
-      const selectors = {
-        form: "#cs_gated_form",
-        phoneInput: "#Phone-cs",
-        dialCode: "#cs-dialCode",
-        errorMsg: "#cs-error-msg",
-        validMsg: "#cs-valid-msg",
-        fullPhone: "#cs-fullPhone"
-      };
-      return selectors[key] || key;
-    }
-    
-    // If the phone input is missing, we can't proceed
-    if (!elements.phoneInput) {
-      return;
-    }
-    
-    // Initialize the intlTelInput with extensive debugging
     try {
-      debugLog('Initializing intlTelInput...');
+      // Check if intlTelInput is available
+      if (typeof intlTelInput === 'undefined') {
+        throw new Error('intlTelInput library not found. Make sure it is loaded before this script.');
+      }
       
-      var iti = intlTelInput(elements.phoneInput, {
+      // Get required elements
+      const input = document.querySelector("#Phone-cs");
+      const dialCode = document.querySelector("#cs-dialCode");
+      const errorMsg = document.querySelector("#cs-error-msg");
+      const validMsg = document.querySelector("#cs-valid-msg");
+      
+      // Check if elements exist
+      if (!input) {
+        throw new Error('Phone input element #Phone-cs not found');
+      }
+      if (!dialCode) {
+        throw new Error('Dial code element #cs-dialCode not found');
+      }
+      
+      debugLog('Phone elements found', { input, dialCode, errorMsg, validMsg });
+      
+      // Initialize intlTelInput
+      const iti = intlTelInput(input, {
         initialCountry: "auto",
         strictMode: true,
-        geoIpLookup: function(callback) {
+        utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js",
+        geoIpLookup: (callback) => {
           debugLog('Starting GeoIP lookup');
           fetch("https://ipapi.co/json")
-            .then(function(res) {
-              debugLog('GeoIP response received', res);
+            .then((res) => {
               if (!res.ok) {
-                throw new Error(`GeoIP lookup failed with status: ${res.status}`);
+                throw new Error(`GeoIP API returned ${res.status}: ${res.statusText}`);
               }
               return res.json();
             })
-            .then(function(data) {
-              debugLog('GeoIP data received', data);
-              if (data && data.country_code) {
-                debugLog(`Setting country to ${data.country_code}`);
-                callback(data.country_code);
-              } else {
-                debugLog('No country code in GeoIP data, falling back to "in"');
-                callback("in");
-              }
+            .then((data) => {
+              debugLog('GeoIP lookup successful', data);
+              callback(data.country_code);
             })
-            .catch(function(error) {
-              console.error('GeoIP lookup error:', error);
-              debugLog('GeoIP lookup failed, falling back to "in"');
+            .catch((error) => {
+              debugError('GeoIP lookup failed', error);
               callback("in");
             });
         },
-        // Add more options for debugging
-        utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js"
       });
       
       debugLog('intlTelInput initialized', iti);
       
-      // Test if the instance was created correctly
-      if (!iti) {
-        console.error('ERROR: intlTelInput instance was not created properly');
-        return;
-      }
-      
-      // Test if the methods exist
-      debugLog('Testing intlTelInput methods');
+      // Set initial dial code value
       try {
-        var testCountryData = iti.getSelectedCountryData();
-        debugLog('getSelectedCountryData works', testCountryData);
-      } catch (e) {
-        console.error('ERROR: Could not call getSelectedCountryData', e);
-      }
-      
-      // Update dial code immediately after initialization
-      if (elements.dialCode) {
-        try {
-          var initialCountryData = iti.getSelectedCountryData();
-          if (initialCountryData && initialCountryData.dialCode) {
-            elements.dialCode.value = "+" + initialCountryData.dialCode;
-            debugLog('Initial dial code set', {
-              country: initialCountryData.name,
-              dialCode: initialCountryData.dialCode,
-              inputValue: elements.dialCode.value
-            });
-          } else {
-            console.error('ERROR: Could not get initial country data or dial code');
-          }
-        } catch (e) {
-          console.error('ERROR: Could not set initial dial code', e);
+        const initialData = iti.getSelectedCountryData();
+        if (initialData && initialData.dialCode) {
+          dialCode.value = "+" + initialData.dialCode;
+          debugLog('Initial dial code set', { dialCode: dialCode.value });
         }
+      } catch (e) {
+        debugError('Failed to set initial dial code', e);
       }
       
-      // Define update function
-      var updateInputValue = function(event) {
-        debugLog('updateInputValue called', { eventType: event.type });
-        
+      // Update dial code when country changes
+      const updateInputValue = function(event) {
         try {
-          var countryData = iti.getSelectedCountryData();
-          debugLog('Country data retrieved', countryData);
-          
-          if (countryData && countryData.dialCode && elements.dialCode) {
-            elements.dialCode.value = "+" + countryData.dialCode;
-            debugLog('Dial code updated', {
-              country: countryData.name,
-              dialCode: countryData.dialCode,
-              inputValue: elements.dialCode.value
+          const countryData = iti.getSelectedCountryData();
+          if (countryData && countryData.dialCode) {
+            dialCode.value = "+" + countryData.dialCode;
+            debugLog('Updated dial code', {
+              event: event.type,
+              country: countryData.iso2,
+              dialCode: dialCode.value
             });
           } else {
-            console.error('ERROR: Could not update dial code. Missing data:', {
-              countryData: countryData,
-              dialCodeElement: elements.dialCode
-            });
+            debugError('Country data not available');
           }
         } catch (e) {
-          console.error('ERROR: Exception when updating dial code', e);
+          debugError('Error updating dial code', e);
         }
       };
       
-      // Add event listeners with proper error handling
-      try {
-        elements.phoneInput.addEventListener('input', function(event) {
-          debugLog('input event triggered', { value: elements.phoneInput.value });
-          updateInputValue(event);
-        }, false);
-        
-        elements.phoneInput.addEventListener('countrychange', function(event) {
-          debugLog('countrychange event triggered');
-          updateInputValue(event);
-        }, false);
-        
-        debugLog('Event listeners added successfully');
-      } catch (e) {
-        console.error('ERROR: Could not add event listeners', e);
+      // Add event listeners for phone input
+      input.addEventListener('input', updateInputValue, false);
+      input.addEventListener('countrychange', updateInputValue, false);
+      
+      // Error messages for validation
+      const errorMap = [
+        "Please enter a valid phone number", 
+        "Invalid country code", 
+        "Phone number too short", 
+        "Phone number too long", 
+        "Invalid phone number"
+      ];
+      
+      // Reset validation state
+      const reset = function() {
+        input.classList.remove("error");
+        if (errorMsg) {
+          errorMsg.innerHTML = "";
+          errorMsg.classList.add("errorhide");
+        }
+        if (validMsg) {
+          validMsg.classList.add("errorhide");
+        }
+        debugLog('Phone validation state reset');
+      };
+      
+      // Regular expression for validating phone numbers
+      const phoneRegex = /^(?:[0-9]●?){6,14}[0-9]$/;
+      
+      // Function to validate phone number
+      function isValidPhoneNumber(phoneNumber) {
+        const isValid = phoneRegex.test(phoneNumber);
+        debugLog('Phone regex validation', { phoneNumber, isValid });
+        return isValid;
       }
       
-      // Add a test button to manually trigger country change
-      var testButton = document.createElement('button');
-      testButton.textContent = 'Test Country Change';
-      testButton.style.marginTop = '10px';
-      testButton.type = 'button';
-      testButton.addEventListener('click', function() {
-        debugLog('Manually testing country change to US');
-        try {
-          iti.setCountry('us');
-          debugLog('Country set to US');
-        } catch (e) {
-          console.error('ERROR: Could not set country to US', e);
+      // Validate phone on blur
+      input.addEventListener('blur', function() {
+        debugLog('Phone input blur event', { value: input.value });
+        reset();
+        
+        const phoneNumber = input.value;
+        
+        // Validate with regex
+        if (phoneNumber && !isValidPhoneNumber(phoneNumber)) {
+          input.classList.add('invalid');
+          debugLog('Phone failed regex validation');
+        } else {
+          input.classList.remove('invalid');
+        }
+        
+        // Validate with intlTelInput
+        if (input.value.trim()) {
+          const isValidNumber = iti.isValidNumber();
+          debugLog('intlTelInput validation', { isValid: isValidNumber });
+          
+          if (isValidNumber) {
+            if (validMsg) {
+              validMsg.classList.remove("errorhide");
+            }
+            debugLog('Phone number is valid');
+          } else {
+            input.classList.add("error");
+            if (errorMsg) {
+              const errorCode = iti.getValidationError();
+              errorMsg.innerHTML = errorMap[errorCode];
+              errorMsg.classList.remove("errorhide");
+              debugLog('Phone validation error', { 
+                errorCode, 
+                errorMessage: errorMap[errorCode] 
+              });
+            }
+          }
         }
       });
       
-      // Add the button after the phone input
-      if (elements.phoneInput.parentNode) {
-        elements.phoneInput.parentNode.insertBefore(testButton, elements.phoneInput.nextSibling);
-      }
+      // Reset validation on input
+      input.addEventListener('change', reset);
+      input.addEventListener('keyup', reset);
       
-      // Add form submission debug handler
-      if (elements.form) {
-        elements.form.addEventListener('submit', function(e) {
-          e.preventDefault(); // Prevent actual submission for testing
+      debugLog('Phone validation initialized successfully');
+      
+      // If in debug mode, add a test button
+      if (DEBUG) {
+        const testButton = document.createElement('button');
+        testButton.type = 'button';
+        testButton.textContent = 'Test Phone Format';
+        testButton.style.marginTop = '10px';
+        testButton.style.marginBottom = '10px';
+        testButton.style.padding = '5px';
+        testButton.style.fontSize = '12px';
+        testButton.style.backgroundColor = '#f0f0f0';
+        
+        testButton.addEventListener('click', function() {
+          debugLog('Testing phone format');
           
-          debugLog('Form submission attempted');
-          
-          // Check if the phone fields are working correctly
-          if (elements.dialCode && elements.phoneInput && elements.fullPhone) {
-            var dialCodeValue = elements.dialCode.value;
-            var phoneValue = elements.phoneInput.value;
-            var fullPhone = `${dialCodeValue} ${phoneValue}`;
-            
-            elements.fullPhone.value = fullPhone;
-            
-            debugLog('Phone values at submission', {
-              dialCode: dialCodeValue,
-              phone: phoneValue,
-              fullPhone: fullPhone,
-              fullPhoneInput: elements.fullPhone.value
-            });
-          } else {
-            console.error('ERROR: Missing phone related elements for submission');
-          }
-          
-          debugLog('Form would be submitted with these values:', {
-            name: $('#Name-cs').val(),
-            email: $('#Email-cs').val(),
-            phone: $('#Phone-cs').val(),
-            dialCode: $('#cs-dialCode').val(),
-            fullPhone: $('#cs-fullPhone').val(),
-            pageUrl: $('#Page-Url').val()
+          // Output current values
+          debugLog('Current phone values', {
+            phoneValue: input.value,
+            dialCode: dialCode.value,
+            fullPhone: `${dialCode.value} ${input.value}`,
+            isValid: iti.isValidNumber(),
+            countryData: iti.getSelectedCountryData()
           });
           
-          // Show a debug message
-          alert('DEBUG: Form submission prevented for testing. Check console for details.');
+          // Test with a few sample countries
+          const testCountries = ['us', 'gb', 'in', 'au'];
+          const currentCountry = iti.getSelectedCountryData().iso2;
+          const nextCountry = testCountries.find(c => c !== currentCountry) || 'us';
+          
+          try {
+            iti.setCountry(nextCountry);
+            debugLog(`Set country to ${nextCountry}`);
+          } catch (e) {
+            debugError('Failed to change country', e);
+          }
         });
+        
+        // Add button after phone input
+        if (input.parentNode) {
+          input.parentNode.insertBefore(testButton, input.nextSibling);
+        }
       }
       
+      return { input, dialCode, iti }; // Return for use in other functions
     } catch (error) {
-      console.error('ERROR: Exception when initializing intlTelInput', error);
+      debugError('Failed to initialize phone validation', error);
+      return null;
+    }
+  }
+  
+  // 2. Required Field Validation
+  function initRequiredFieldValidation() {
+    debugLog('Initializing required field validation');
+    
+    try {
+      // Validate required fields on blur
+      $(document).on('blur', ':input[required]', function() {
+        const field = $(this);
+        const fieldName = field.attr('name') || field.attr('id') || 'unnamed field';
+        const isEmpty = field.val() === '';
+        
+        debugLog(`Required field blur: ${fieldName}`, { isEmpty });
+        
+        if (isEmpty) {
+          field.addClass('invalid');
+        } else {
+          field.removeClass('invalid');
+        }
+      });
+      
+      // Validate on submit button click
+      $(document).on('click', '#btnSubmit', function() {
+        debugLog('Submit button clicked');
+        
+        const requiredFields = $(':input[required]');
+        let isValid = true;
+        let invalidFields = [];
+        
+        requiredFields.each(function() {
+          const field = $(this);
+          const fieldName = field.attr('name') || field.attr('id') || 'unnamed field';
+          const isEmpty = field.val() === '';
+          
+          debugLog(`Validating field: ${fieldName}`, { isEmpty });
+          
+          if (isEmpty) {
+            field.addClass('invalid');
+            isValid = false;
+            invalidFields.push(fieldName);
+          } else {
+            field.removeClass('invalid');
+          }
+        });
+        
+        debugLog('Form validation result', { 
+          isValid, 
+          invalidFields: invalidFields.length ? invalidFields : 'none'
+        });
+      });
+      
+      debugLog('Required field validation initialized');
+    } catch (error) {
+      debugError('Failed to initialize required field validation', error);
+    }
+  }
+  
+  // 3. Form Submission
+  function initFormSubmission() {
+    debugLog('Initializing form submission handler');
+    
+    try {
+      const form = $('#cs_gated_form');
+      
+      if (form.length === 0) {
+        throw new Error('Form #cs_gated_form not found');
+      }
+      
+      // Handle form submission
+      form.on('submit', function(e) {
+        // For debugging purposes, prevent submission
+        if (DEBUG) {
+          e.preventDefault();
+          debugLog('Form submission prevented in debug mode');
+        }
+        
+        debugLog('Form submitted');
+        
+        // Combine phone parts
+        const dialCode = $('#cs-dialCode').val();
+        const phone = $('#Phone-cs').val();
+        const fullPhone = `${dialCode} ${phone}`;
+        
+        $('#cs-fullPhone').val(fullPhone);
+        
+        debugLog('Combined phone value', { 
+          dialCode,
+          phone,
+          fullPhone,
+          fullPhoneField: $('#cs-fullPhone').val()
+        });
+        
+        // Log all form data
+        const formData = {};
+        form.serializeArray().forEach(function(item) {
+          formData[item.name] = item.value;
+        });
+        
+        debugLog('Complete form data', formData);
+        
+        // In debug mode, show a message instead of submitting
+        if (DEBUG) {
+          showDebugMessage('Form would be submitted with the data shown in console', 'success');
+          return false;
+        }
+      });
+      
+      debugLog('Form submission handler initialized');
+    } catch (error) {
+      debugError('Failed to initialize form submission', error);
+    }
+  }
+  
+  // 4. Page URL Capture (Finsweet)
+  function initPageUrlCapture() {
+    debugLog('Initializing page URL capture');
+    
+    try {
+      const SHOW_PAGE_URL_SELECTOR = '[fs-hacks-element="show-page-url"]';
+      const PAGE_URL_INPUT_SELECTOR = '[fs-hacks-element="page-url-input"]';
+      
+      const pageUrl = document.querySelector(SHOW_PAGE_URL_SELECTOR);
+      const pageUrlInput = document.querySelector(PAGE_URL_INPUT_SELECTOR);
+      
+      if (!pageUrl && !pageUrlInput) {
+        debugLog('Page URL elements not found, skipping URL capture');
+        return;
+      }
+      
+      const url = location.href;
+      
+      if (pageUrlInput) {
+        pageUrlInput.value = url;
+        debugLog('Set page URL input', { selector: PAGE_URL_INPUT_SELECTOR, value: url });
+      }
+      
+      if (pageUrl) {
+        pageUrl.innerText = url;
+        debugLog('Set page URL text', { selector: SHOW_PAGE_URL_SELECTOR, value: url });
+      }
+      
+      debugLog('Page URL capture initialized');
+    } catch (error) {
+      debugError('Failed to initialize page URL capture', error);
+    }
+  }
+  
+  // 5. Form Validator (jQuery Validate)
+  function initFormValidator() {
+    debugLog('Initializing jQuery validate');
+    
+    try {
+      // Check if jQuery validate is available
+      if (typeof $.fn.validate === 'undefined') {
+        debugLog('jQuery validate not found, skipping form validation initialization');
+        return;
+      }
+      
+      $("[data-validate-form='true']").each(function() {
+        $(this).validate({
+          errorPlacement: function(error, element) {
+            error.appendTo(element.closest("[data-errorplace='true']"));
+          },
+          debug: DEBUG, // Don't submit in debug mode
+          success: function(label, element) {
+            debugLog('Field validated successfully', { 
+              element: element.name || element.id, 
+              value: element.value 
+            });
+          },
+          invalidHandler: function(event, validator) {
+            debugLog('Form validation failed', { 
+              errors: validator.numberOfInvalids() 
+            });
+          },
+          submitHandler: function(form) {
+            debugLog('Form passed validation, preparing to submit');
+            
+            // If in debug mode, prevent submission
+            if (DEBUG) {
+              debugLog('Submission prevented in debug mode');
+              showDebugMessage('Form is valid and would be submitted', 'success');
+              return false;
+            }
+            
+            form.submit();
+          }
+        });
+        
+        debugLog('jQuery validate initialized for form', { 
+          id: this.id || 'unnamed form' 
+        });
+      });
+    } catch (error) {
+      debugError('Failed to initialize jQuery validate', error);
+    }
+  }
+  
+  // Debug helpers
+  function addDebugPanel() {
+    // Create debug panel
+    const panel = document.createElement('div');
+    panel.id = 'form-debug-panel';
+    panel.style.cssText = `
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      width: 300px;
+      max-height: 200px;
+      overflow: auto;
+      background: rgba(0,0,0,0.85);
+      color: #00ff00;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 9999;
+      display: none;
+    `;
+    
+    // Create toggle button
+    const button = document.createElement('button');
+    button.textContent = 'Debug Panel';
+    button.style.cssText = `
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      z-index: 10000;
+      padding: 5px;
+      background: #333;
+      color: #fff;
+      border: none;
+      border-radius: 3px;
+      font-size: 12px;
+    `;
+    
+    // Add to document
+    document.body.appendChild(panel);
+    document.body.appendChild(button);
+    
+    // Toggle panel on button click
+    button.addEventListener('click', function() {
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    });
+    
+    // Override console.log
+    const originalLog = console.log;
+    const originalError = console.error;
+    
+    console.log = function() {
+      originalLog.apply(console, arguments);
+      
+      // Only add debug messages to panel
+      const firstArg = arguments[0];
+      if (typeof firstArg === 'string' && firstArg.includes('[DEBUG]')) {
+        addLogToPanel(arguments[0], 'log');
+      }
+    };
+    
+    console.error = function() {
+      originalError.apply(console, arguments);
+      
+      // Only add error messages to panel
+      const firstArg = arguments[0];
+      if (typeof firstArg === 'string' && firstArg.includes('[ERROR]')) {
+        addLogToPanel(arguments[0], 'error');
+      }
+    };
+    
+    function addLogToPanel(message, type) {
+      const entry = document.createElement('div');
+      entry.style.borderBottom = '1px solid #333';
+      entry.style.padding = '3px 0';
+      entry.style.color = type === 'error' ? '#ff5555' : '#00ff00';
+      entry.textContent = message;
+      panel.appendChild(entry);
+      panel.scrollTop = panel.scrollHeight;
     }
     
-    // Add some CSS to help with debugging
-    $("<style>")
-      .prop("type", "text/css")
-      .html(`
-        .debug-outline { outline: 2px solid red !important; }
-        .debug-success { background-color: #d4edda; color: #155724; padding: 10px; margin: 10px 0; border-radius: 4px; }
-        .debug-error { background-color: #f8d7da; color: #721c24; padding: 10px; margin: 10px 0; border-radius: 4px; }
-      `)
-      .appendTo("head");
+    debugLog('Debug panel added');
+  }
+  
+  function showDebugMessage(message, type) {
+    // Create message element
+    const messageElement = document.createElement('div');
+    messageElement.className = `debug-message debug-${type}`;
+    messageElement.style.cssText = `
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 4px;
+      background-color: ${type === 'success' ? '#d4edda' : '#f8d7da'};
+      color: ${type === 'success' ? '#155724' : '#721c24'};
+      border: 1px solid ${type === 'success' ? '#c3e6cb' : '#f5c6cb'};
+    `;
+    messageElement.textContent = `DEBUG MODE: ${message}`;
     
-    // Outline the phone-related elements to check if they exist and are positioned correctly
-    $("#Phone-cs, #cs-dialCode, #cs-fullPhone").addClass("debug-outline");
+    // Find form or create container
+    const form = document.querySelector('#cs_gated_form');
     
-    debugLog('Debug initialization complete');
-  });
+    if (form) {
+      // Remove any existing messages
+      const existing = form.querySelectorAll('.debug-message');
+      existing.forEach(el => el.remove());
+      
+      // Add new message
+      form.appendChild(messageElement);
+    } else {
+      // If form not found, add to body
+      document.body.appendChild(messageElement);
+    }
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+      messageElement.remove();
+    }, 5000);
+  }
+})();
