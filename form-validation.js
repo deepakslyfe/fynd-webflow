@@ -57,6 +57,15 @@
   function initPhoneValidation() {
     debugLog('Initializing phone validation');
     
+    // Add required intlTelInput CSS if not already added
+    if (!document.querySelector('link[href*="intl-tel-input"]')) {
+      const linkElement = document.createElement('link');
+      linkElement.rel = 'stylesheet';
+      linkElement.href = 'https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/css/intlTelInput.css';
+      document.head.appendChild(linkElement);
+      debugLog('Added intlTelInput CSS');
+    }
+    
     try {
       // Check if intlTelInput is available
       if (typeof intlTelInput === 'undefined') {
@@ -64,7 +73,7 @@
       }
       
       // Get required elements
-      const input = document.querySelector("#Phone-cs");
+      const input = document.querySelector("#phone-cs"); // Note: lowercase 'p' in your form
       const dialCode = document.querySelector("#cs-dialCode");
       const errorMsg = document.querySelector("#cs-error-msg");
       const validMsg = document.querySelector("#cs-valid-msg");
@@ -287,8 +296,8 @@
         }
       });
       
-      // Validate on submit button click
-      $(document).on('click', '#btnSubmit', function() {
+      // Validate on any submit button click within a form
+      $(document).on('click', 'form button[type="submit"]', function() {
         debugLog('Submit button clicked');
         
         const requiredFields = $(':input[required]');
@@ -328,10 +337,34 @@
     debugLog('Initializing form submission handler');
     
     try {
-      const form = $('#cs_gated_form');
+      // Try to find the form using either the original ID or the actual ID from your HTML
+    let form = $('#cs_gated_form');
+    
+    if (form.length === 0) {
+      form = $('#wf-form-CS-Gated-Form');
       
       if (form.length === 0) {
-        throw new Error('Form #cs_gated_form not found');
+        debugLog('Warning: Neither #cs_gated_form nor #wf-form-CS-Gated-Form found');
+      } else {
+        debugLog('Found form with ID #wf-form-CS-Gated-Form');
+      }
+    } else {
+      debugLog('Found form with ID #cs_gated_form');
+    }
+    
+    if (form.length === 0) {
+      throw new Error('Form not found');
+      }
+      
+      // Set the actual form ID from your HTML
+      const formId = '#wf-form-CS-Gated-Form';
+      const actualForm = $(formId);
+      
+      if (actualForm.length === 0) {
+        debugLog(`Form with ID ${formId} not found, still using #cs_gated_form as fallback`);
+      } else {
+        debugLog(`Found form with ID ${formId}`);
+        form = actualForm;
       }
       
       // Handle form submission
@@ -346,7 +379,7 @@
         
         // Combine phone parts
         const dialCode = $('#cs-dialCode').val();
-        const phone = $('#Phone-cs').val();
+        const phone = $('#phone-cs').val(); // Note: lowercase 'p' in your form
         const fullPhone = `${dialCode} ${phone}`;
         
         $('#cs-fullPhone').val(fullPhone);
