@@ -38,12 +38,41 @@
   onDocumentReady(function() {
     debugLog('Document ready, initializing form validation');
     
-    // Initialize all components
-    initPhoneValidation();
-    initRequiredFieldValidation();
-    initFormSubmission();
-    initPageUrlCapture();
-    initFormValidator();
+    // Give the page a moment to fully render before initializing
+    // This helps avoid conflicts with other scripts
+    setTimeout(() => {
+      // Initialize all components
+      initPhoneValidation();
+      initRequiredFieldValidation();
+      initFormSubmission();
+      initPageUrlCapture();
+      initFormValidator();
+      
+      // Add a manual initialization button in debug mode
+      if (DEBUG) {
+        const reinitButton = document.createElement('button');
+        reinitButton.textContent = 'Reinitialize Phone Input';
+        reinitButton.style.cssText = `
+          position: fixed;
+          bottom: 50px;
+          right: 10px;
+          z-index: 10000;
+          padding: 5px;
+          background: #333;
+          color: #fff;
+          border: none;
+          border-radius: 3px;
+          font-size: 12px;
+        `;
+        
+        reinitButton.addEventListener('click', () => {
+          debugLog('Manual reinitialization requested');
+          initPhoneValidation();
+        });
+        
+        document.body.appendChild(reinitButton);
+      }
+    }, 500); // Half-second delay to ensure page is fully loaded
     
     // Add inline debug panel if in debug mode
     if (DEBUG) {
@@ -66,6 +95,33 @@
       debugLog('Added intlTelInput CSS');
     }
     
+    // Add custom CSS to handle multiple instances correctly
+    const customStyleEl = document.createElement('style');
+    customStyleEl.textContent = `
+      /* Ensure proper display of international phone input */
+      .iti {
+        width: 100%;
+        display: block;
+        position: relative;
+      }
+      .iti__flag-container {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        padding: 1px;
+      }
+      /* Fix any z-index issues */
+      .iti__country-list {
+        z-index: 999;
+      }
+      /* Make sure inputs have proper padding for the country selector */
+      input#phone-cs {
+        padding-left: 52px !important;
+      }
+    `;
+    document.head.appendChild(customStyleEl);
+    debugLog('Added custom phone input CSS fixes');
+    
     try {
       // Check if intlTelInput is available
       if (typeof intlTelInput === 'undefined') {
@@ -78,6 +134,18 @@
       const errorMsg = document.querySelector("#cs-error-msg");
       const validMsg = document.querySelector("#cs-valid-msg");
       
+      // Check if the phone input already has intlTelInput initialized
+      if (input && input.classList.contains('iti__tel-input')) {
+        debugLog('Phone input already has intlTelInput initialized, will not initialize again');
+        return null;
+      }
+      
+      // Check if the parent element already has the iti container
+      if (input && input.parentElement && input.parentElement.querySelector('.iti__flag-container')) {
+        debugLog('Parent element already has intlTelInput initialized, will not initialize again');
+        return null;
+      }
+      
       // Check if elements exist
       if (!input) {
         throw new Error('Phone input element #Phone-cs not found');
@@ -88,10 +156,38 @@
       
       debugLog('Phone elements found', { input, dialCode, errorMsg, validMsg });
       
-      // Initialize intlTelInput
+      // Destroy any existing instances first to avoid conflicts
+      if (input && typeof input.iti !== 'undefined') {
+        try {
+          input.iti.destroy();
+          debugLog('Destroyed existing intlTelInput instance');
+        } catch (e) {
+          debugError('Failed to destroy existing intlTelInput instance', e);
+        }
+      }
+      
+      // Remove any existing iti elements to completely reset
+      if (input && input.parentElement) {
+        const existingIti = input.parentElement.querySelector('.iti');
+        if (existingIti) {
+          // Clone the input
+          const clone = input.cloneNode(true);
+          // Replace the parent with the clone
+          existingIti.parentNode.replaceChild(clone, existingIti);
+          // Update our reference
+          input = clone;
+          debugLog('Removed existing ITI container and reset input');
+        }
+      }
+      
+      // Initialize intlTelInput with expanded options
       const iti = intlTelInput(input, {
         initialCountry: "auto",
         strictMode: true,
+        separateDialCode: true, // Show the dial code separately
+        allowDropdown: true,    // Allow the dropdown
+        autoPlaceholder: "aggressive",
+        preferredCountries: ["in", "us", "gb"], // Default to showing these first
         utilsScript: "https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.19/js/utils.js",
         geoIpLookup: (callback) => {
           debugLog('Starting GeoIP lookup');
@@ -114,6 +210,29 @@
       });
       
       debugLog('intlTelInput initialized', iti);
+      
+      // Store the instance on the input element itself for future reference
+      input.iti = iti;
+      
+      // Force a redraw of the phone input container
+      setTimeout(() => {
+        // Add a class to the parent container to ensure styles apply
+        if (input.parentElement) {
+          input.parentElement.classList.add('iti-enabled');
+          debugLog('Added iti-enabled class to parent');
+        }
+        
+        // Make sure the flag container is visible
+        const flagContainer = input.parentElement ? 
+          input.parentElement.querySelector('.iti__flag-container') : null;
+        
+        if (flagContainer) {
+          flagContainer.style.display = 'block';
+          debugLog('Ensured flag container is visible');
+        } else {
+          debugError('Could not find flag container');
+        }
+      }, 100);
       
       // Set initial dial code value
       try {
