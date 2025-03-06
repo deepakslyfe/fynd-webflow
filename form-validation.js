@@ -1,10 +1,10 @@
 $(document).ready(function() {
-  var input = document.querySelector("#phone2"),
-    dialCode = document.querySelector(".dialCode"),
-     errorMsg = document.querySelector("#error-msg"),
-      validMsg = document.querySelector("#valid-msg");
+  var input1 = document.querySelector("#phone-cs"),
+    dialCode1 = document.querySelector("#cs-dialCode"),
+     errorMsg1 = document.querySelector("#cs-error-msg"),
+      validMsg1 = document.querySelector("#cs-valid-msg");
   
-  var iti = intlTelInput(input, {
+  var iti = intlTelInput(input1, {
     initialCountry: "in",
     placeholderNumberType: 'FIXED_LINE',
   });
